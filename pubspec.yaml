@@ -1,0 +1,14 @@
+name: shared_tools
+description: Reusable CLI and scripts for Flutter projects
+version: 0.1.0
+environment:
+  sdk: ">=3.1.0 <4.0.0"
+
+executables:
+  update_dependencies: bin/update_dependencies.dart
+  update_android_versions: bin/update_android_versions.dart
+  replace_opacity: bin/replace_opacity.dart
+
+dependencies:
+  http: ^1.1.0
+  yaml: ^3.1.2
