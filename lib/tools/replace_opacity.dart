@@ -2,43 +2,50 @@ import 'dart:io';
 
 Future<void> run(List<String> args) async {
   final projectDir = Directory.current;
-  final files = projectDir
-      .listSync(recursive: true)
-      .whereType<File>()
-      .where((file) => file.path.endsWith('.dart'));
+
+  final files = projectDir.listSync(recursive: true).whereType<File>().where(
+      (file) =>
+          file.path.endsWith('.dart') &&
+          !file.path.contains(RegExp(
+              r'(/|\\)(build|\.dart_tool|\.pub-cache|test_resources)(/|\\)')));
 
   for (final file in files) {
-    final content = file.readAsStringSync();
+    final content = await file.readAsString();
 
-    final hasWithOpacity = content.contains('.withOpacitySafe(');
-    final hasImport = content
-        .contains("import 'package:kaptain/core/extensions/color.dart';");
+    final hasWithOpacity = content.contains('.withOpacity(');
+    final alreadyConverted = content.contains('.withOpacitySafe(');
 
-    if (!hasWithOpacity) continue;
+    if (!hasWithOpacity || alreadyConverted) continue;
 
     String updated = content.replaceAllMapped(
       RegExp(r'\.withOpacity\((.*?)\)'),
       (match) => '.withOpacitySafe(${match[1]})',
     );
 
+    final importRegex = RegExp(
+      r'''import\s+['"]package:shared_tools/extensions/extention_color\.dart['"];''',
+    );
+    final hasImport = importRegex.hasMatch(updated);
+
     if (!hasImport) {
-      final importInsertionIndex =
-          updated.indexOf(RegExp(r'^import .+;', multiLine: true));
-      const header = "import 'package:kaptain/core/extensions/color.dart';\n";
-      if (importInsertionIndex == -1) {
-        updated = '$header\n$updated';
+      final lines = updated.split('\n');
+      final lastImportIndex =
+          lines.lastIndexWhere((line) => line.startsWith('import '));
+      const importLine =
+          "import 'package:shared_tools/extensions/extention_color.dart';";
+
+      if (lastImportIndex != -1) {
+        lines.insert(lastImportIndex + 1, importLine);
       } else {
-        final lines = updated.split('\n');
-        final lastImportLine =
-            lines.lastIndexWhere((line) => line.startsWith('import '));
-        lines.insert(lastImportLine + 1, header.trim());
-        updated = lines.join('\n');
+        lines.insert(0, importLine);
       }
+
+      updated = lines.join('\n');
     }
 
-    file.writeAsStringSync(updated);
-    print('Updated: ${file.path}');
+    await file.writeAsString(updated);
+    print('✔ Updated: ${file.path}');
   }
 
-  print('✔ All replacements complete.');
+  print('🎉 All replacements complete.');
 }

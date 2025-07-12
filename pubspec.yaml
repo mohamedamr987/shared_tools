@@ -1,14 +1,25 @@
 name: shared_tools
-description: Reusable CLI tools for Flutter projects
+description: A collection of shared tools and scripts for Flutter projects.
 version: 0.1.0
+homepage: https://github.com/mohamedamr987/shared_tools
+publish_to: none
+
 environment:
-  sdk: ">=3.1.0 <4.0.0"
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.1.0
+  yaml: ^3.1.2
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+
+flutter:
 
 executables:
   update_dependencies: update_dependencies
   update_android_versions: update_android_versions
   replace_opacity: replace_opacity
-
-dependencies:
-  http: ^1.1.0
-  yaml: ^3.1.2
