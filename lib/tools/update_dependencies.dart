@@ -161,6 +161,11 @@ String _getProjectName(List<String> lines) {
   return match?.group(1) ?? '';
 }
 
+bool _isPlatformSpecificPlugin(String pkg) {
+  final lower = pkg.toLowerCase();
+  return lower.endsWith('_ios') || lower.endsWith('_android');
+}
+
 bool _isFlutterPackage(String pkg) {
   const builtIn = {
     'flutter',
@@ -169,7 +174,7 @@ bool _isFlutterPackage(String pkg) {
     'cupertino_icons',
     'flutter_lints'
   };
-  return builtIn.contains(pkg);
+  return builtIn.contains(pkg) || _isPlatformSpecificPlugin(pkg);
 }
 
 bool _isSpecialDependency(String line) {
