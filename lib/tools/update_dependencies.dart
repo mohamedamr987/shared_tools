@@ -28,20 +28,21 @@ Future<void> run(List<String> args) async {
 
   final originalVersions = <String, String?>{};
   for (var entry in allDeclaredPackages.entries) {
-    final match = RegExp(r'^\s{2}${entry.key}:\s*\^?([^\s]+)')
-        .firstMatch(lines[entry.value]);
+    final line = lines[entry.value];
+    final match = RegExp(r'^\s{2}${entry.key}:\s*\^?([^\s]+)').firstMatch(line);
     originalVersions[entry.key] = match?.group(1);
   }
 
   final updated = <String, String>{};
 
-  // Step 1: Update all declared packages to latest
+  // Step 1: Update declared packages
   for (final pkg in allDeclaredPackages.keys) {
-    if (_isFlutterPackage(pkg)) continue;
+    final index = allDeclaredPackages[pkg]!;
+    final line = lines[index];
+    if (_isSpecialDependency(line) || _isFlutterPackage(pkg)) continue;
 
     final latest = await _fetchLatestPubVersion(pkg);
     if (latest != null) {
-      final index = allDeclaredPackages[pkg]!;
       updatedLines[index] = '  $pkg: ^$latest';
       updated[pkg] = latest;
     }
@@ -53,7 +54,7 @@ Future<void> run(List<String> args) async {
     './',
     exclude: {
       projectName,
-      ...allDeclaredPackages.keys.toSet(),
+      ...allDeclaredPackages.keys,
     },
   );
 
@@ -90,7 +91,7 @@ Future<void> run(List<String> args) async {
     }
   }
 
-  // Step 3: Suggest unused packages for removal
+  // Step 3: Suggest unused packages
   final actuallyUsed = await _findUsedPackages(
     './',
     exclude: {projectName},
@@ -99,7 +100,8 @@ Future<void> run(List<String> args) async {
   final unused = sectionIndexes['dependencies']!.keys.where((pkg) {
     final isUsed = actuallyUsed.contains(pkg);
     final isFlutter = _isFlutterPackage(pkg);
-    if (!isUsed && !isFlutter) {
+    final index = sectionIndexes['dependencies']![pkg]!;
+    if (!isUsed && !isFlutter && !_isSpecialDependency(lines[index])) {
       print('🧹 $pkg appears unused (not imported anywhere)');
       return true;
     }
@@ -112,12 +114,11 @@ Future<void> run(List<String> args) async {
       print('  • $pkg');
     }
 
-    for (final pkg in unused) {
-      final index = sectionIndexes['dependencies']![pkg];
-      if (index != null) {
-        updatedLines[index] = ''; // Mark for cleanup
-        print('❌ Removed unused dependency: $pkg');
-      }
+    // Remove unused packages (backward to avoid shifting)
+    for (final pkg in unused.reversed) {
+      final index = sectionIndexes['dependencies']![pkg]!;
+      updatedLines.removeAt(index);
+      print('❌ Removed unused dependency: $pkg');
     }
   }
 
@@ -152,7 +153,7 @@ Future<void> run(List<String> args) async {
   stderr.write(get.stderr);
 }
 
-// ===== Helpers =====
+// ========== Helpers ==========
 
 String _getProjectName(List<String> lines) {
   final match =
@@ -161,14 +162,20 @@ String _getProjectName(List<String> lines) {
 }
 
 bool _isFlutterPackage(String pkg) {
-  const flutterBuiltIns = {
+  const builtIn = {
     'flutter',
     'flutter_test',
     'flutter_localizations',
     'cupertino_icons',
     'flutter_lints'
   };
-  return flutterBuiltIns.contains(pkg);
+  return builtIn.contains(pkg);
+}
+
+bool _isSpecialDependency(String line) {
+  return line.contains('git:') ||
+      line.contains('path:') ||
+      line.contains('sdk:');
 }
 
 Future<String?> _fetchLatestPubVersion(String package) async {
@@ -192,17 +199,16 @@ Future<Set<String>> _findUsedPackages(String dir,
     if (entity is File && entity.path.endsWith('.dart')) {
       final content = await entity.readAsString();
 
-      // Look for imports
-      final importMatches =
+      // Find imports
+      final matches =
           RegExp(r'''import\s+['"]package:([^/]+)''').allMatches(content);
-      for (final match in importMatches) {
+      for (final match in matches) {
         final pkg = match.group(1)!;
         if (!exclude.contains(pkg)) {
           used.add(pkg);
         }
       }
 
-      // Identifier usage fallback
       for (final pkg in exclude) {
         if (_isFlutterPackage(pkg)) continue;
         if (RegExp(r'\b$pkg\b').hasMatch(content)) {
@@ -214,7 +220,6 @@ Future<Set<String>> _findUsedPackages(String dir,
 
   used.addAll(
       identifierUsage.entries.where((e) => e.value > 0).map((e) => e.key));
-
   return used;
 }
 
@@ -224,11 +229,14 @@ Map<String, int> _sectionIndexes(List<String> lines, String section) {
   final result = <String, int>{};
 
   for (int i = index + 1; i < lines.length; i++) {
-    final match = RegExp(r'^\s{2}([a-zA-Z0-9_]+):').firstMatch(lines[i]);
-    if (match != null) {
+    final line = lines[i];
+
+    if (line.trim().isEmpty || !line.startsWith(' ')) break;
+
+    final match =
+        RegExp(r'^\s{2}([a-zA-Z0-9_]+):\s*([^\s{]*)$').firstMatch(line);
+    if (match != null && !_isSpecialDependency(line)) {
       result[match.group(1)!] = i;
-    } else if (lines[i].trim().isEmpty || !lines[i].startsWith(' ')) {
-      break;
     }
   }
 
@@ -262,7 +270,7 @@ void _sortAndDeduplicateDependencies(List<String> lines) {
           entries.add(line);
         }
       } else {
-        entries.add(line); // Keep comments or blank lines
+        entries.add(line);
       }
     }
 
